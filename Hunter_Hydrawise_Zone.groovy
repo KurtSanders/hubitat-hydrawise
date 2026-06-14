@@ -31,6 +31,7 @@ metadata
         capability "Configuration"
         capability "Refresh"
         capability "Valve"
+        capability "ContactSensor"
         command "runZone", ["secondsToRun"]
         command "suspendZone", ["suspendDateStr"]          // format: yyyy-mm-dd
         command "unsuspendZone"
@@ -42,25 +43,6 @@ metadata
         attribute "nextRunDuration", "number"              // relay.run when run is NOT in progress
         attribute "nextRunDurationStr", "string"           // relay.run in friendldy string format when run is NOT in progress
     }
-    
-    // tile definitions
-    tiles(scale: 2) {
-		multiAttributeTile(name:"valve", type: "generic", width: 6, height: 4, canChangeIcon: true){
-			tileAttribute ("device.valve", key: "PRIMARY_CONTROL") {
-				attributeState "open", label: '${name}', action: "valve.close", icon: "st.valves.water.open", backgroundColor: "#00A0DC", nextState:"closing"
-				attributeState "closed", label: '${name}', action: "valve.open", icon: "st.valves.water.closed", backgroundColor: "#ffffff", nextState:"opening"
-				attributeState "opening", label: '${name}', action: "valve.close", icon: "st.valves.water.open", backgroundColor: "#00A0DC"
-				attributeState "closing", label: '${name}', action: "valve.open", icon: "st.valves.water.closed", backgroundColor: "#ffffff"
-			}
-		}
-
-		standardTile("refresh", "device.valve", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
-			state "default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh"
-		}
-
-		main "valve"
-		details(["valve","refresh"])
-	}
 }
 
 preferences
@@ -71,7 +53,7 @@ preferences
         input "controller_id", "text", title: "The unique identifier for your controller. This is required when your account has multiple controllers.", required: false
         input "relay_id", "text", title: "Unique ID for this zone.", required: true
         input "default_run_duration", "number", title: "Default Run Duration in Seconds", defaultValue: 600
-        input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+        input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: false
     }
 }
 
@@ -83,10 +65,18 @@ def logDebug(msg)
     }
 }    
 
+def logsOff(){
+    log.warn "Debug logging disabled."
+    device.updateSetting("logEnable",[value:"false",type:"bool"])
+}
+
 def updated()
 {
     logDebug("Hunter Hydrawise Zone: updated()")
-
+    if (logEnable) {
+        log.info "Updated Loging Prefernces..."
+        if (logEnable) runIn(900,logsOff)
+    }
     configure()
 }
 
@@ -253,12 +243,12 @@ def updateRelayState(relay)
         sendEvent(name: "currentRunDuration", value: relay.run) 
         sendEvent(name: "currentRunDurationStr", value: convertSecstoSimpleStr(relay.run)) 
     }
-    
     state.relay = relay.relay        // Physical zone number
     state.name = relay.name
     state.timestr = relay.timestr    // Next time this zone will water in a friendly string format
     state.time = relay.time          // Number of seconds until the next programmed run. Value will be 1 if a run is in progress
     state.run = relay.run            // Length of next run time. If a run is in progress value will indicate number of seconds remaining.
+    sendEvent(name: "contact", value: device.currentValue('valve'))
 }
 
 def httpGetExec(suffix)

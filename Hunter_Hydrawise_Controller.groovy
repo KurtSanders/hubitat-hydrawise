@@ -21,9 +21,10 @@ Change history:
 1.0.3 - tomw - Fix broken suspendAllZones()
 1.0.2 - tomw - Added capability "Actuator" to allow running custom commands in Rule Machine
 1.0.0 - tomw and JustinL - Initial release
+2.0.0 - kurtsanders - Fixed several issues, updated device capability to provide rain sensor 'contactSensor' status
 
  */
-
+import java.text.SimpleDateFormat
 metadata
 {
     definition(name: "Hunter Hydrawise Controller", namespace: "tomw", author: "tomw, lnjustin", importUrl: "")
@@ -31,11 +32,12 @@ metadata
         capability "Actuator"
         capability "Configuration"
         capability "Refresh"
+        capability "Switch"
+        capability "ContactSensor"
         
         attribute "name", "string"
-        attribute "last_contact", "string"
         attribute "serial_number", "string"
-        attribute "status", "string"
+        attribute "controllertime", "string"
         
         command "runAllZones", ["number"]
         command "stopAllZones"
@@ -49,8 +51,13 @@ preferences
     {
         input "api_key", "text", title: "API keys can be obtained from your Hydrawise account under My Account -> Generate API Key.", required: true
         input "controller_id", "text", title: "The unique identifier for your controller. This is required when your account has multiple controllers.", required: false
-        input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+        input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: false
     }
+}
+
+def logsOff(){
+    log.warn "Debug logging disabled."
+    device.updateSetting("logEnable",[value:"false",type:"bool"])
 }
 
 def logDebug(msg) 
@@ -64,30 +71,45 @@ def logDebug(msg)
 def updated()
 {
     logDebug("Hunter Hydrawise Controller: updated()")
+    if (logEnable) runIn(900,logsOff)
 
     configure()
 }
 
-def configure()
-{
+def configure() {
     logDebug("Hunter Hydrawise Controller: configure()")
     
+    device.deleteCurrentState("status")
+
     unschedule()
     state.clear()
-    
+
     refresh()
-    
+    def cronString = "6-18 ? 4-10 * *"
+    if (state?.nextpoll > 59) {
+        cronString = "0 0/${Math.round(state.nextpoll/60)} ${cronString}"
+    } else {
+        cronString = "0/${state.nextpoll} 0 ${cronString}"        
+    }
+
+
     //create all zone devices
     createChildren()
+    logDebug("${cronString}, refresh)")
+    schedule("${cronString}", refresh)
 }
 
 def refresh()
 {
     logDebug("Hunter Hydrawise Controller: refresh()")
-    
-    // update controller info
-    def suffix = "customerdetails.php?api_key=${getApi_key()}"
-    parse_customerdetails(httpGetExec(suffix))
+    if (state.customerdetails==null) state.customerdetails=0
+    if(state.customerdetails>9) {
+        state.customerdetails=0
+        def suffix = "customerdetails.php?api_key=${getApi_key()}"
+        parse_customerdetails(httpGetExec(suffix))
+    } else {
+        state.customerdetails=state.customerdetails+1
+    }
     
     // update zone info
     suffix = "statusschedule.php?api_key=${getApi_key()}"
@@ -99,7 +121,15 @@ def refresh()
     
     updateChildren()
     
-    runIn(state.nextpoll, refresh)
+//    runIn(state.nextpoll, refresh)
+}
+
+def on() {
+    sendEvent(name: "switch", value: "on")
+}
+
+def off() {
+    sendEvent(name: "switch", value: "off")
 }
 
 def createChildren()
@@ -107,7 +137,14 @@ def createChildren()
     logDebug("Hunter Hydrawise Controller: createChildren()")
     for (relay in getRelays())
     {
-        child = addChildDevice("Hunter Hydrawise Zone", relay.relay_id.toString(), [label:"Zone ${relay.relay.toString()}", isComponent:false, name:"${relay.relay_id.toString()}"])
+        String formattedZoneNumber = String.format("%02d", relay.relay)
+        logDebug("Hunter Hydrawise Controller: Checking Relay #${formattedZoneNumber}: '${relay.name}'")
+        child = (getChildDevice(relay.relay_id.toString()))
+        if (!child) {
+            logDebug("Hunter Hydrawise Controller: Creating Zone #${formattedZoneNumber}: '${relay.name}'")
+            child = addChildDevice("Hunter Hydrawise Zone", relay.relay_id.toString(), [label:"Zone ${formattedZoneNumber} - ${relay.name.toString()}", isComponent:false, name:"${relay.relay_id.toString()}"])
+        }
+        logDebug("Hunter Hydrawise Controller: Updating Zone #${formattedZoneNumber}: '${relay.name}'")
         child.updateSetting("api_key", getApi_key())
         child.updateSetting("controller_id", getController_id())
         child.updateSetting("relay_id", relay.relay_id)
@@ -119,11 +156,16 @@ def updateChildren()
 {
     // update relays from controller, to reduce API calls. Hydrawise limits to 30 calls in 5 minutes
     logDebug("Hunter Hydrawise Controller: updateChildren()")
+    def rainSensor = "closed"
     for (relay in getRelays())
     {
         child = getChildDevice(relay.relay_id.toString())
-        if (child) child.updateRelayState(relay)
+        if (child) {
+            child.updateRelayState(relay)
+            if (relay?.stop == 1) rainSensor = "open"
+        }
     }
+    sendEvent(name: "contact", value: rainSensor)
 }
 
 def deleteChildren()
@@ -149,6 +191,7 @@ def getController_id()
     return controller_id
 }
 
+
 def parse_customerdetails(resp)
 {
     logDebug("Hunter Hydrawise Controller: parse_customerdetails()")
@@ -163,9 +206,7 @@ def parse_customerdetails(resp)
         if (controller.controller_id.toString() == controller_id)
         {
             sendEvent(name: "name", value: controller.name)
-            sendEvent(name: "last_contact", value: controller.last_contact)
             sendEvent(name: "serial_number", value: controller.serial_number)
-            sendEvent(name: "status", value: controller.status)
         }
     }
 }
@@ -181,9 +222,17 @@ def parse_statusschedule(resp)
     
     state.lastmessage = resp.message
     state.nextpoll = resp.nextpoll
-    state.controllertime = resp.time
     state.relays = resp.relays
     state.sensors = resp.sensors
+    state.controllertime = resp.time
+
+    EpochDateTime = resp.time
+    def sdf = new SimpleDateFormat("MM/dd/yyyy h:mm:ss a")    
+    ConvertedDateTime = use(groovy.time.TimeCategory) {
+        new Date( 0 ) + EpochDateTime.seconds
+    }
+    sendEvent(name: "controllertime", value: sdf.format(ConvertedDateTime))
+
 }
 
 def runAllZones(runDuration) {
@@ -252,6 +301,6 @@ def httpGetExec(suffix)
     }
     catch (Exception e)
     {
-        log.warn "Hunter Hydrawise Controller httpGetExec() failed: ${e.message}"
+        log.warn "Hunter Hydrawise Controller httpGetExec(${suffix}) failed: ${e.message} resp = ${resp}"
     }
 }

@@ -19,8 +19,10 @@ limitations under the License.
 Change history:
 
 1.0.0 - @tomw and @JustinL - Initial release
+2.0.0 - kurtsanders Updated depreciated attributes, removed the automatic deletion via 'Configuration' of zones when controller is unavailable from cloud
 
  */
+import java.text.SimpleDateFormat
 
 metadata
 {
@@ -28,7 +30,9 @@ metadata
     {
         capability "Configuration"
         capability "Refresh"
+        attribute "name", "string"
     }
+    command "deleteAllChildrenZones", [[name: "Danger Zone", description: "This will permanatly delete all Hubitat children zone devices"]]
 }
 
 preferences
@@ -48,20 +52,23 @@ def logDebug(msg)
     }
 }
 
+void deleteAllZones() {
+    // clear out existing devices
+    deleteChildren()
+    // clear existing state info
+    state.clear() 
+}
+
 
 def configure()
 {
     logDebug("Hunter Hydrawise System: configure()")
     
-    // clear out existing devices
-    deleteChildren()
-    // clear existing state info
-    state.clear()
-    
+   
     // update system info
     refresh()
     
-    //create all controller devices
+    //create all controller devices (User must remove unused or outdated zones)
     createChildren()
 }
 
@@ -94,10 +101,14 @@ def createChildren()
     logDebug("Hunter Hydrawise System: createChildren()")
     for (controller in getControllers())
     {
-        child = addChildDevice("Hunter Hydrawise Controller", controller.controller_id.toString(), [label:"${controller.serial_number.toString()}", isComponent:false, name:"${controller.controller_id.toString()}"])
-        child.updateSetting("api_key", getApi_key())
-        child.updateSetting("controller_id", controller.controller_id)
-        child.configure()
+        try {
+            child = addChildDevice("Hunter Hydrawise Controller", controller.controller_id.toString(), [label:"${controller.serial_number.toString()}", isComponent:false, name:"${controller.controller_id.toString()}"])
+            child.updateSetting("api_key", getApi_key())
+            child.updateSetting("controller_id", controller.controller_id)
+            child.configure()
+        } catch (Exception e) {
+	        log.warn "Hunter Hydrawise System Zone ${controller.serial_number.toString()} Exists: ${e.message}"
+    	}
     }
 }
 
@@ -111,11 +122,16 @@ def deleteChildren()
 
 def parse_customerdetails(resp)
 {
+    if (resp == null) {
+        logDebug("Hunter Hydrawise System: parse_customerdetails() resp=${resp}")
+        return
+    }
     logDebug("Hunter Hydrawise System: parse_customerdetails()")
     
     state.activecontroller_id = resp.controller_id
     state.customer_id = resp.customer_id
     state.controllers = resp.controllers
+    sendEvent(name: "name", value: resp.controllers[0].name)
 }
 
 def getControllers()
@@ -135,6 +151,7 @@ def httpGetExec(suffix)
     try
     {
         getString = "https://api.hydrawise.com/api/v1/" + suffix
+        logDebug("getString = ${getString}")
         httpGet(getString.replaceAll(' ', '%20'))
         { resp ->
             if (resp.data)
