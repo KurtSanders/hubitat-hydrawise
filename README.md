@@ -1,6 +1,6 @@
 # Hubitat Hydrawise Irrigation Controller Integration
 
-![Hydrawise Irrigation Controller](https://raw.githubusercontent.com/KurtSanders/hubitat-hydrawise/refs/heads/main/images/pro-hc-controller.jpeg)
+![Hydrawise Irrigation Controller](https://raw.githubusercontent.com/KurtSanders/hubitat-hydrawise/refs/heads/main/images/pro-hc-controller.jpg)
 
 Add "Hunter Hydrawise System", "Hunter Hydrawise Controller", and "Hubitat Hydrawise Zone" as Driver code in the Hubitat Hub 'Drivers Code' section.
 
