@@ -26,7 +26,7 @@ import java.text.SimpleDateFormat
 
 metadata
 {
-    definition(name: "Hunter Hydrawise System", namespace: "tomw", author: "tomw", importUrl: "")
+    definition(name: "Hunter Hydrawise System", namespace: "tomw", author: "tomw", importUrl: "https://raw.githubusercontent.com/KurtSanders/hubitat-hydrawise/refs/heads/main/drivers/Hunter_Hydrawise_System.groovy")
     {
         capability "Configuration"
         capability "Refresh"

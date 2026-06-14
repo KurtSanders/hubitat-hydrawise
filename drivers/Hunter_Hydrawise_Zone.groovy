@@ -26,7 +26,7 @@ Change history:
 
 metadata
 {
-    definition(name: "Hunter Hydrawise Zone", namespace: "tomw", author: "tomw, lnjustin", importUrl: "")
+    definition(name: "Hunter Hydrawise Zone", namespace: "tomw", author: "tomw, lnjustin", importUrl: "https://raw.githubusercontent.com/KurtSanders/hubitat-hydrawise/refs/heads/main/drivers/Hunter_Hydrawise_Zone.groovy")
     {        
         capability "Configuration"
         capability "Refresh"

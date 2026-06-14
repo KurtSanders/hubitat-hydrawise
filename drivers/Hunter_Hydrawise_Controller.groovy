@@ -27,7 +27,7 @@ Change history:
 import java.text.SimpleDateFormat
 metadata
 {
-    definition(name: "Hunter Hydrawise Controller", namespace: "tomw", author: "tomw, lnjustin", importUrl: "")
+    definition(name: "Hunter Hydrawise Controller", namespace: "tomw", author: "tomw, lnjustin", importUrl: "https://raw.githubusercontent.com/KurtSanders/hubitat-hydrawise/refs/heads/main/drivers/Hunter_Hydrawise_Controller.groovy")
     {
         capability "Actuator"
         capability "Configuration"
